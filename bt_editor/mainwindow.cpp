@@ -22,6 +22,7 @@
 #include <nodes/NodeData>
 #include <nodes/NodeStyle>
 #include <nodes/FlowView>
+#include <thread>
 
 #include "editor_flowscene.h"
 #include "utils.h"
@@ -40,11 +41,20 @@ using QtNodes::FlowScene;
 using QtNodes::NodeGraphicsObject;
 using QtNodes::NodeState;
 
-MainWindow::MainWindow(GraphicMode initial_mode, QWidget *parent) :
-                                                                    QMainWindow(parent),
-                                                                    ui(new Ui::MainWindow),
-                                                                    _current_mode(initial_mode),
-                                                                    _current_layout(QtNodes::PortLayout::Vertical)
+MainWindow::MainWindow(GraphicMode initial_mode,
+                       const QString& monitor_address,
+                       const QString& monitor_pub_port,
+                       const QString& monitor_srv_port,
+                       const bool monitor_autoconnect,
+                       QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow),
+    _current_mode(initial_mode),
+    _current_layout(QtNodes::PortLayout::Vertical),
+    _monitor_address(monitor_address),
+    _monitor_publisher_port(monitor_pub_port),
+    _monitor_server_port(monitor_srv_port),
+    _monitor_autoconnect(monitor_autoconnect)
 {
     ui->setupUi(this);
 
@@ -96,7 +106,8 @@ MainWindow::MainWindow(GraphicMode initial_mode, QWidget *parent) :
     ui->leftFrame->layout()->addWidget( _replay_widget );
 
 #ifdef ZMQ_FOUND
-    _monitor_widget = new SidepanelMonitor(this);
+    _monitor_widget = new SidepanelMonitor(
+        this, _monitor_address, _monitor_publisher_port, _monitor_server_port);
     ui->leftFrame->layout()->addWidget( _monitor_widget );
 
     connect( ui->toolButtonConnect, &QToolButton::clicked,
@@ -104,6 +115,16 @@ MainWindow::MainWindow(GraphicMode initial_mode, QWidget *parent) :
 
     connect( _monitor_widget, &SidepanelMonitor::connectionUpdate,
             this, &MainWindow::onConnectionUpdate );
+
+    if ( monitor_autoconnect )
+    {
+        // If autoconnecting, increase the timeout to get the behavior tree to a
+        // larger value. This only lasts for one "connect" before returning to
+        // its default value.
+        _monitor_widget->set_load_tree_timeout_ms(
+            _monitor_widget->_load_tree_autoconnect_timeout_ms);
+        ui->toolButtonConnect->animateClick();
+    }
 #else
     ui->actionMonitor_mode->setVisible(false);
 #endif
@@ -145,6 +166,9 @@ MainWindow::MainWindow(GraphicMode initial_mode, QWidget *parent) :
     {
         this->createTab(ID);
     });
+
+    connect(_editor_widget, &SidepanelEditor::setTabScope,
+            this, &MainWindow::onSubtreeSelected);
 
     connect( _editor_widget, &SidepanelEditor::renameSubtree,
              this, [this](QString prev_ID, QString new_ID)
@@ -720,6 +744,14 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
     {
         qDebug() << "B " << event->type();
         return QMainWindow::eventFilter(obj,event);
+    }
+}
+
+void MainWindow::showEvent(QShowEvent *event)
+{
+    if (!event->spontaneous()) {
+        currentTabInfo()->zoomHomeView();
+        ui->centralwidget->setFocus();
     }
 }
 
@@ -1710,4 +1742,16 @@ void MainWindow::on_actionReportIssue_triggered()
 GraphicMode MainWindow::getGraphicMode(void) const
 {
     return _current_mode;
+}
+
+void MainWindow::onSubtreeSelected(const QString& subtreeName)
+{
+    for (int i = 0; i < ui->tabWidget->tabBar()->count(); ++i)
+    {
+        if (ui->tabWidget->tabBar()->tabText(i) == subtreeName)
+        {
+            ui->tabWidget->tabBar()->setCurrentIndex(i);
+            return;
+        }
+    }
 }

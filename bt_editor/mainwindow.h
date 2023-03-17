@@ -6,6 +6,7 @@
 #include <nodes/Node>
 #include <QTreeWidgetItem>
 #include <QShortcut>
+#include <QShowEvent>
 #include <QTimer>
 #include <deque>
 #include <thread>
@@ -42,7 +43,12 @@ class MainWindow : public QMainWindow
                               SUBTREE_REFRESH};
 
 public:
-    explicit MainWindow(GraphicMode initial_mode, QWidget *parent = nullptr);
+    explicit MainWindow(GraphicMode initial_mode,
+                        const QString& monitor_address = "",
+                        const QString& monitor_pub_port = "",
+                        const QString& monitor_srv_port = "",
+                        const bool monitor_autoconnect = false,
+                        QWidget *parent = nullptr);
     ~MainWindow() override;
 
     void loadFromXML(const QString &xml_text);
@@ -89,6 +95,8 @@ public slots:
     void on_actionLoad_triggered();
 
     void on_actionSave_triggered();
+
+    void onSubtreeSelected(const QString& subtreeName);
 
     void on_splitter_splitterMoved(int pos = 0, int index = 0);
 
@@ -141,6 +149,8 @@ private:
     void updateCurrentMode();
 
     bool eventFilter(QObject *obj, QEvent *event) override;
+
+    void showEvent(QShowEvent *event) override;
 
     void resizeEvent(QResizeEvent *) override;
 
@@ -197,7 +207,12 @@ private:
 #ifdef ZMQ_FOUND
     SidepanelMonitor* _monitor_widget;
 #endif
-    
+
+    QString _monitor_address;
+    QString _monitor_publisher_port;
+    QString _monitor_server_port;
+    bool _monitor_autoconnect;
+
     MainWindow::SavedState saveCurrentState();
     void clearUndoStacks();
 };
